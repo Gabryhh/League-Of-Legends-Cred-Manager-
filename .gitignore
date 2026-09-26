@@ -16,11 +16,13 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-*.spec
 
 # PyInstaller output
 *.exe
 !setup.exe
+build/
+dist/
+installer_output/
 
 # IDE / editor
 .vscode/
