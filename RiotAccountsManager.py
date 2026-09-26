@@ -180,34 +180,32 @@ def select_account(username, accounts, game, config):
         "--launch-patchline=live"
     ])
 
-    # Minimizza le finestre sul monitor primario DOPO aver lanciato il processo
+    # Minimizza le finestre sul monitor primario silenziosamente
     time.sleep(0.3)
     primary_mon = get_monitor_rect_at(0, 0)
-
-    SW_MINIMIZE = 6
-    WS_VISIBLE  = 0x10000000
+    WM_SYSCOMMAND = 0x0112
+    SC_MINIMIZE    = 0xF020
+    WS_VISIBLE     = 0x10000000
+    WS_MINIMIZE    = 0x20000000
 
     def _enum_callback(hwnd, _):
         try:
             if not ctypes.windll.user32.IsWindowVisible(hwnd):
                 return True
-            if not ctypes.windll.user32.IsIconic(hwnd) == 0:
-                return True
-            # Controlla stile — deve essere una finestra normale visibile
             style = ctypes.windll.user32.GetWindowLongW(hwnd, -16)
             if not (style & WS_VISIBLE):
                 return True
-            # Controlla titolo
-            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
-            if length == 0:
+            if style & WS_MINIMIZE:
                 return True
-            # Controlla posizione — deve essere sul monitor primario
+            if ctypes.windll.user32.GetWindowTextLengthW(hwnd) == 0:
+                return True
             rect = ctypes.wintypes.RECT()
             ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
             cx = (rect.left + rect.right) // 2
             cy = (rect.top + rect.bottom) // 2
             if primary_mon[0] <= cx < primary_mon[2] and primary_mon[1] <= cy < primary_mon[3]:
-                ctypes.windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
+                # SC_MINIMIZE non causa flash visivo
+                ctypes.windll.user32.PostMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0)
         except Exception:
             pass
         return True
