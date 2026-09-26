@@ -26,7 +26,7 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.3"  # temporaneo per testare update
+APP_VERSION     = "0.0.4"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -254,26 +254,31 @@ class UpdateChecker(QObject):
 
 class DownloadThread(QThread):
     progress = Signal(int)
-    finished = Signal(str)  # path file scaricato
+    finished = Signal(str)
 
     def __init__(self, url):
         super().__init__()
         self.url = url
+        self._dest = os.path.join(
+            os.environ.get("APPDATA", "C:\\Users\\Public"),
+            "RiotAccountsManager", "update_setup.exe"
+        )
 
     def run(self):
         try:
-            r = requests.get(self.url, stream=True, timeout=60)
+            os.makedirs(os.path.dirname(self._dest), exist_ok=True)
+            r = requests.get(self.url, stream=True, timeout=120)
+            r.raise_for_status()
             total = int(r.headers.get("content-length", 0))
-            import tempfile
-            dest = os.path.join(tempfile.gettempdir(), "RiotAccountsManager_update_setup.exe")
             downloaded = 0
-            with open(dest, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total:
-                        self.progress.emit(int(downloaded * 100 / total))
-            self.finished.emit(dest)
+            with open(self._dest, "wb") as f:
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            self.progress.emit(int(downloaded * 100 / total))
+            self.finished.emit(self._dest)
         except Exception as e:
             self.finished.emit(f"ERROR:{e}")
 
@@ -296,14 +301,15 @@ def show_update_dialog(parent, version, url):
     layout.addWidget(bar)
     dlg.show()
 
-    thread = DownloadThread(url)
-    thread.progress.connect(bar.setValue)
+    # Teniamo il thread come attributo del dialog per evitare garbage collection
+    dlg._thread = DownloadThread(url)
+    dlg._thread.progress.connect(bar.setValue)
 
     def on_finished(path):
         dlg.close()
         if not path or path.startswith("ERROR:"):
-            err = path.replace("ERROR:", "") if path else "Download fallito"
-            QMessageBox.critical(parent, "Errore download", f"{err}")
+            err = path.replace("ERROR:", "") if path else "nessun path"
+            QMessageBox.critical(parent, "Errore download", f"Dettaglio:\n{err}")
             return
         if not os.path.exists(path):
             QMessageBox.critical(parent, "Errore", f"File non trovato:\n{path}")
@@ -314,8 +320,8 @@ def show_update_dialog(parent, version, url):
         )
         QApplication.quit()
 
-    thread.finished.connect(on_finished)
-    thread.start()
+    dlg._thread.finished.connect(on_finished)
+    dlg._thread.start()
 
 # ─── Setup Wizard ─────────────────────────────────────────────────────────────
 
