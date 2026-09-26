@@ -19,14 +19,14 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
     QPushButton, QInputDialog, QMessageBox, QComboBox, QLineEdit, QCheckBox,
     QDialog, QLabel, QFileDialog, QProgressBar, QSystemTrayIcon, QMenu,
-    QFrame, QScrollArea, QSizePolicy
+    QFrame, QScrollArea, QSizePolicy, QDoubleSpinBox
 )
 from functools import partial
 
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.2"
+APP_VERSION     = "0.0.3"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -56,6 +56,7 @@ def default_config():
         "coords_username": [420, 506],
         "coords_password": [421, 585],
         "master_password_hash": "",
+        "login_delay": 3.0,
         "version": APP_VERSION
     }
 
@@ -179,6 +180,41 @@ def select_account(username, accounts, game, config):
         "--launch-patchline=live"
     ])
 
+    # Minimizza le finestre sul monitor primario DOPO aver lanciato il processo
+    time.sleep(0.3)
+    primary_mon = get_monitor_rect_at(0, 0)
+
+    SW_MINIMIZE = 6
+    WS_VISIBLE  = 0x10000000
+
+    def _enum_callback(hwnd, _):
+        try:
+            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                return True
+            if not ctypes.windll.user32.IsIconic(hwnd) == 0:
+                return True
+            # Controlla stile — deve essere una finestra normale visibile
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, -16)
+            if not (style & WS_VISIBLE):
+                return True
+            # Controlla titolo
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            if length == 0:
+                return True
+            # Controlla posizione — deve essere sul monitor primario
+            rect = ctypes.wintypes.RECT()
+            ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            cx = (rect.left + rect.right) // 2
+            cy = (rect.top + rect.bottom) // 2
+            if primary_mon[0] <= cx < primary_mon[2] and primary_mon[1] <= cy < primary_mon[3]:
+                ctypes.windll.user32.ShowWindow(hwnd, SW_MINIMIZE)
+        except Exception:
+            pass
+        return True
+
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+    ctypes.windll.user32.EnumWindows(EnumWindowsProc(_enum_callback), 0)
+
     # Attende la finestra del Riot Client visibile e non minimizzata
     timeout = 60
     poll   = 0.5
@@ -196,7 +232,7 @@ def select_account(username, accounts, game, config):
         return
 
     riot_window.activate()
-    time.sleep(3.0)
+    time.sleep(config.get("login_delay", 3.0))
 
     cx, cy = config["coords_username"]
     px, py = config["coords_password"]
@@ -947,6 +983,20 @@ class AccountManager(QWidget):
         self.game_selector.addItems(["League of Legends", "Valorant"])
         bottom.addWidget(self.game_selector)
 
+        # Spinbox per il delay di login
+        delay_layout = QHBoxLayout()
+        delay_label = QLabel("Delay login (sec):")
+        delay_layout.addWidget(delay_label)
+        self.delay_spin = QDoubleSpinBox()
+        self.delay_spin.setRange(1.0, 15.0)
+        self.delay_spin.setSingleStep(0.5)
+        self.delay_spin.setDecimals(1)
+        self.delay_spin.setValue(self.config.get("login_delay", 3.0))
+        self.delay_spin.setToolTip("Aumenta se le credenziali vengono inserite prima che il client sia pronto")
+        self.delay_spin.valueChanged.connect(self._save_delay)
+        delay_layout.addWidget(self.delay_spin)
+        bottom.addLayout(delay_layout)
+
         self.add_btn = QPushButton("➕  Aggiungi Account")
         self.add_btn.clicked.connect(self.add_account)
         bottom.addWidget(self.add_btn)
@@ -1032,6 +1082,12 @@ class AccountManager(QWidget):
         self.showNormal()
         self.activateWindow()
 
+    def _save_delay(self, value):
+        cfg = load_config()
+        cfg["login_delay"] = value
+        save_config(cfg)
+        self.config = cfg
+
     def closeEvent(self, event):
         event.ignore()
         self.hide()
@@ -1049,21 +1105,7 @@ class AccountManager(QWidget):
     # ── Avvio gioco ───────────────────────────────────────────────────────────
 
     def start_game(self, username):
-        self.hide()  # va nella tray invece di minimizzarsi nella taskbar
-        time.sleep(0.5)
-
-        primary_mon = get_monitor_rect_at(0, 0)
-        for win in gw.getAllWindows():
-            if not win.visible or win.isMinimized or not win.title.strip():
-                continue
-            try:
-                wcx = win.left + win.width  // 2
-                wcy = win.top  + win.height // 2
-                if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
-                    win.minimize()
-            except Exception:
-                pass
-
+        self.hide()  # va nella tray
         self.config = load_config()
         select_account(username, self.accounts, self.game_selector.currentText(), self.config)
 

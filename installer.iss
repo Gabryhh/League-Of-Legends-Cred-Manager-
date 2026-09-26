@@ -7,7 +7,7 @@
 ; I file saranno in dist\RiotAccountsManager By Gabry\
 
 #define AppName "RiotAccountsManager By Gabry"
-#define AppVersion "0.0.2"
+#define AppVersion "0.0.3"
 #define AppPublisher "Gabry"
 #define AppURL "https://github.com/Gabryhh/League-Of-Legends-Cred-Manager-"
 #define AppExeName "RiotAccountsManager By Gabry.exe"
@@ -53,9 +53,9 @@ Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 ; Collegamento nel menu Start
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\info\ico\256x256.ico"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\_internal\info\ico\256x256.ico"
 ; Collegamento sul desktop (opzionale, abilitato di default)
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\info\ico\256x256.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\_internal\info\ico\256x256.ico"; Tasks: desktopicon
 ; Voce disinstalla nel menu Start
 Name: "{group}\Disinstalla {#AppName}"; Filename: "{uninstallexe}"
 
