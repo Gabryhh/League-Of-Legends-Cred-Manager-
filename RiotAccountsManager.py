@@ -300,14 +300,13 @@ def show_update_dialog(parent, version, url):
         if not os.path.exists(path):
             QMessageBox.critical(parent, "Errore", f"File non trovato:\n{path}")
             return
-        subprocess.Popen(
-            [path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
-            creationflags=subprocess.CREATE_NO_WINDOW
+        # ShellExecute con runas gestisce UAC correttamente
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", path,
+            "/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+            None, 1
         )
         QApplication.quit()
-
-    dlg._thread.finished.connect(on_finished)
-    dlg._thread.start()
 
 # ─── Setup Wizard ─────────────────────────────────────────────────────────────
 
