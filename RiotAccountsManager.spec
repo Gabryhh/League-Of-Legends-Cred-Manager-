@@ -16,8 +16,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        # Include la cartella icone
         ("info/ico", "info/ico"),
+        ("C:\\Users\\gabry\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python311\\site-packages\\certifi\\cacert.pem", "certifi"),
     ],
     hiddenimports=[
         "pynput.keyboard._win32",
@@ -28,6 +28,11 @@ a = Analysis(
         "cryptography.hazmat.backends.openssl",
         "PySide6.QtSvg",
         "PySide6.QtXml",
+        "certifi",
+        "requests",
+        "urllib3",
+        "charset_normalizer",
+        "idna",
     ],
     hookspath=[],
     hooksconfig={},
@@ -48,7 +53,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    console=False,
     icon="info/ico/256x256.ico",
     uac_admin=True,
 )

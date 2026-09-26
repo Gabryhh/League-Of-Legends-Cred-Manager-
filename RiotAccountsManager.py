@@ -26,7 +26,7 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.4"
+APP_VERSION     = "0.0.3"  # temporaneo per testare update
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -264,8 +264,8 @@ class DownloadThread(QThread):
         try:
             r = requests.get(self.url, stream=True, timeout=60)
             total = int(r.headers.get("content-length", 0))
-            dest  = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "C:\\Temp")), 
-                                 "RiotAccountsManager_update_setup.exe")
+            import tempfile
+            dest = os.path.join(tempfile.gettempdir(), "RiotAccountsManager_update_setup.exe")
             downloaded = 0
             with open(dest, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -274,8 +274,8 @@ class DownloadThread(QThread):
                     if total:
                         self.progress.emit(int(downloaded * 100 / total))
             self.finished.emit(dest)
-        except Exception:
-            self.finished.emit("")
+        except Exception as e:
+            self.finished.emit(f"ERROR:{e}")
 
 def show_update_dialog(parent, version, url):
     msg = QMessageBox(parent)
@@ -301,10 +301,13 @@ def show_update_dialog(parent, version, url):
 
     def on_finished(path):
         dlg.close()
-        if not path:
-            QMessageBox.critical(parent, "Errore", "Download fallito.")
+        if not path or path.startswith("ERROR:"):
+            err = path.replace("ERROR:", "") if path else "Download fallito"
+            QMessageBox.critical(parent, "Errore download", f"{err}")
             return
-        # Avvia l'installer in modalità silenziosa — installa e riavvia automaticamente
+        if not os.path.exists(path):
+            QMessageBox.critical(parent, "Errore", f"File non trovato:\n{path}")
+            return
         subprocess.Popen(
             [path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
             creationflags=subprocess.CREATE_NO_WINDOW
@@ -1145,6 +1148,13 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
     with open(log_path, "w", encoding="utf-8") as f:
         f.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
 
+def _fix_ssl():
+    if hasattr(sys, "_MEIPASS"):
+        cert = os.path.join(sys._MEIPASS, "certifi", "cacert.pem")
+        if os.path.exists(cert):
+            os.environ["SSL_CERT_FILE"] = cert
+            os.environ["REQUESTS_CA_BUNDLE"] = cert
+
 def _log(msg):
     """Scrive un messaggio di debug su file in AppData."""
     try:
@@ -1156,6 +1166,7 @@ def _log(msg):
 
 if __name__ == "__main__":
     sys.excepthook = _global_exception_handler
+    _fix_ssl()
     generate_key()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
