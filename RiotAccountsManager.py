@@ -183,10 +183,11 @@ def select_account(username, accounts, game, config):
     # Minimizza le finestre sul monitor primario silenziosamente
     time.sleep(0.3)
     primary_mon = get_monitor_rect_at(0, 0)
-    WM_SYSCOMMAND = 0x0112
-    SC_MINIMIZE    = 0xF020
-    WS_VISIBLE     = 0x10000000
-    WS_MINIMIZE    = 0x20000000
+    WM_SYSCOMMAND      = 0x0112
+    SC_MINIMIZE        = 0xF020
+    WS_VISIBLE         = 0x10000000
+    WS_MINIMIZE        = 0x20000000
+    WS_OVERLAPPEDWINDOW = 0x00CF0000
 
     def _enum_callback(hwnd, _):
         try:
@@ -197,6 +198,9 @@ def select_account(username, accounts, game, config):
                 return True
             if style & WS_MINIMIZE:
                 return True
+            # Solo finestre con stile overlapped (finestre normali dell'utente)
+            if not (style & WS_OVERLAPPEDWINDOW):
+                return True
             if ctypes.windll.user32.GetWindowTextLengthW(hwnd) == 0:
                 return True
             rect = ctypes.wintypes.RECT()
@@ -204,8 +208,7 @@ def select_account(username, accounts, game, config):
             cx = (rect.left + rect.right) // 2
             cy = (rect.top + rect.bottom) // 2
             if primary_mon[0] <= cx < primary_mon[2] and primary_mon[1] <= cy < primary_mon[3]:
-                # SC_MINIMIZE non causa flash visivo
-                ctypes.windll.user32.PostMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0)
+                ctypes.windll.user32.SendMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0)
         except Exception:
             pass
         return True
@@ -256,7 +259,7 @@ class UpdateChecker(QObject):
         try:
             r = requests.get(GITHUB_API_URL, timeout=5)
             data = r.json()
-            latest = data.get("tag_name", "").lstrip("v")
+            latest = data.get("tag_name", "").lstrip("v").lstrip(".")
             if latest and latest != APP_VERSION:
                 # Cerca un asset .exe
                 url = ""
