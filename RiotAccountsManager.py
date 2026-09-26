@@ -154,7 +154,9 @@ def close_riot_processes():
                  "LeagueClient.exe", "LeagueClientUx.exe", "League of Legends.exe",
                  "VALORANT.exe", "VALORANT-Win64-Shipping.exe"]:
         try:
-            subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True)
+            subprocess.run(["taskkill", "/F", "/IM", name],
+                           capture_output=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
         except Exception:
             pass
     time.sleep(3)
