@@ -22,6 +22,8 @@ a = Analysis(
     hiddenimports=[
         "pynput.keyboard._win32",
         "pynput.mouse._win32",
+        "pynput.mouse._base",
+        "pynput._util.win32",
         "cryptography.hazmat.primitives.kdf.pbkdf2",
         "cryptography.hazmat.backends.openssl",
         "PySide6.QtSvg",
@@ -46,8 +48,9 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,          # nessuna finestra console
+    console=True,
     icon="info/ico/256x256.ico",
+    uac_admin=True,
 )
 
 coll = COLLECT(

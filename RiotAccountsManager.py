@@ -10,12 +10,10 @@ import threading
 import winreg
 import pyautogui
 import pyperclip
-import psutil
 import pygetwindow as gw
 import requests
 from cryptography.fernet import Fernet
 from PySide6.QtGui import QIcon, QAction
-import keyboard
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
 from PySide6.QtWidgets import (
     QApplication, QWidget, QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
@@ -37,6 +35,14 @@ DATA_FILE       = "accounts.enc"
 CONFIG_FILE     = "config.json"
 
 DEFAULT_RIOT_PATH = "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+
+def resource_path(relative):
+    """Restituisce il path corretto sia in sviluppo che nell'exe PyInstaller."""
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative)
+
+APP_ICON = resource_path("info/ico/256x256.ico")
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -140,12 +146,13 @@ def find_riot_client():
 # ─── Processi Riot ────────────────────────────────────────────────────────────
 
 def close_riot_processes():
-    for proc in psutil.process_iter(attrs=["pid", "name"]):
-        if any(x in proc.info["name"].lower() for x in ["riot", "league"]):
-            try:
-                psutil.Process(proc.info["pid"]).terminate()
-            except psutil.NoSuchProcess:
-                pass
+    for name in ["RiotClientServices.exe", "RiotClientUx.exe", "RiotClientUxRender.exe",
+                 "LeagueClient.exe", "LeagueClientUx.exe", "League of Legends.exe",
+                 "VALORANT.exe", "VALORANT-Win64-Shipping.exe"]:
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True)
+        except Exception:
+            pass
     time.sleep(3)
 
 # ─── Logica avvio account ─────────────────────────────────────────────────────
@@ -399,6 +406,9 @@ class WizardPageRiotPath(QWizardPage):
         return True
 
 class WizardPageCalibration(QWizardPage):
+    # Signal emesso dal thread pynput al thread UI
+    _coord_captured = Signal(str, int, int)
+
     def __init__(self):
         super().__init__()
         self.setTitle("Calibrazione campi di login")
@@ -437,9 +447,6 @@ class WizardPageCalibration(QWizardPage):
         self.pass_btn.clicked.connect(lambda: self._start_capture("password"))
         layout.addWidget(self.pass_btn)
 
-        self.pass_pos_label = QLabel("")
-        layout.addWidget(self.pass_pos_label)
-
         layout.addSpacing(8)
 
         self.result_label = QLabel("")
@@ -462,6 +469,7 @@ class WizardPageCalibration(QWizardPage):
 
         # Timer che aggiorna le coordinate del mouse in tempo reale
         self._capturing = None  # "username" o "password"
+        self._coord_captured.connect(self._on_coord_captured)
 
     def _launch_riot(self):
         riot_path = self.wizard().field("riot_path")
@@ -469,51 +477,44 @@ class WizardPageCalibration(QWizardPage):
             self.err_label.setText("Percorso Riot Client non valido.")
             return
         try:
-            close_riot_processes()
+            _log("1. launch start")
+            # Durante la calibrazione non chiudiamo i processi Riot
+            # per evitare crash con psutil su exe con UAC
             subprocess.Popen([riot_path, "--launch-product=league_of_legends", "--launch-patchline=live"])
+            _log("2. subprocess done")
 
-            # Sposta il wizard in alto a destra PRIMA di minimizzare tutto
+            # Sposta il wizard in alto a destra
             screen = QApplication.primaryScreen().geometry()
             wiz = self.wizard()
             wiz.move(screen.right() - wiz.width() - 10, screen.top() + 10)
             wiz.activateWindow()
             wiz.raise_()
-
-            # Recupera il titolo del wizard per escluderlo dalla minimizzazione
-            wiz_title = wiz.windowTitle()
-
-            # Minimizza tutto sul monitor primario tranne il wizard
-            primary_mon = get_monitor_rect_at(0, 0)
-            for win in gw.getAllWindows():
-                if not win.visible or win.isMinimized or not win.title.strip():
-                    continue
-                if win.title == wiz_title:
-                    continue
-                try:
-                    wcx = win.left + win.width  // 2
-                    wcy = win.top  + win.height // 2
-                    if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
-                        win.minimize()
-                except Exception:
-                    pass
+            _log("3. wizard moved")
 
             self.launch_btn.setEnabled(False)
             self.launch_btn.setText("✅ Riot Client avviato")
             self.user_btn.setEnabled(True)
             self._capturing = "username"
             self.err_label.setText("")
+            _log("4. buttons updated")
 
             # Aspetta che il Riot Client sia visibile poi riporta il wizard in primo piano
             def _wait_and_refocus():
                 timeout, poll, elapsed = 60, 0.5, 0
+                _log("6. wait_and_refocus thread started")
                 while elapsed < timeout:
-                    wins = gw.getWindowsWithTitle("Riot Client")
-                    if wins and wins[0].visible and not wins[0].isMinimized:
-                        break
+                    try:
+                        wins = gw.getWindowsWithTitle("Riot Client")
+                        if wins and wins[0].visible and not wins[0].isMinimized:
+                            break
+                    except Exception:
+                        pass
                     time.sleep(poll)
                     elapsed += poll
+                _log("7. riot window found, refocusing")
                 wiz.activateWindow()
                 wiz.raise_()
+                _log("5. refocus done")
 
             threading.Thread(target=_wait_and_refocus, daemon=True).start()
 
@@ -524,52 +525,50 @@ class WizardPageCalibration(QWizardPage):
                 f.write(traceback.format_exc())
             self.err_label.setText(f"Errore: {e}\nLog salvato in: {log_path}")
 
-    def _update_mouse_pos(self):
-        pass  # non più usato
-
-    def _save_position(self, field):
-        x, y = pyautogui.position()
+    def _on_coord_captured(self, field, x, y):
+        _log(f"10. on_coord_captured {field} {x},{y}")
         if field == "username":
             self._coords_user = (x, y)
-            self.user_btn.setText(f"✅ USERNAME salvato: ({x}, {y})")
-            self.user_btn.setEnabled(False)
+            self.user_btn.setText(f"✅ USERNAME: ({x}, {y})")
             self.pass_btn.setEnabled(True)
         else:
             self._coords_pass = (x, y)
-            self.pass_btn.setText(f"✅ PASSWORD salvata: ({x}, {y})")
-            self.pass_btn.setEnabled(False)
+            self.pass_btn.setText(f"✅ PASSWORD: ({x}, {y})")
             self._update_result()
+        _log(f"11. on_coord_captured done {field}")
+
+    def _update_mouse_pos(self):
+        pass  # non usato
+
+    def _save_position(self, field):
+        pass  # non usato
 
     def _start_capture(self, field):
-        """Aspetta il prossimo click sinistro del mouse tramite polling ctypes."""
         if field == "username":
-            self.user_btn.setText("⏳ In attesa del click su USERNAME...")
+            self.user_btn.setText("⏳ In ascolto... clicca sul campo USERNAME nel Riot Client")
             self.user_btn.setEnabled(False)
         else:
-            self.pass_btn.setText("⏳ In attesa del click su PASSWORD...")
+            self.pass_btn.setText("⏳ In ascolto... clicca sul campo PASSWORD nel Riot Client")
             self.pass_btn.setEnabled(False)
 
-        def wait_for_click():
-            # Aspetta che il tasto sinistro venga rilasciato (per non catturare il click sul bottone)
+        def wait_click():
+            _log(f"6. wait_click started for {field}")
+            # Aspetta che il bottone venga rilasciato prima di iniziare
             while ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000:
                 time.sleep(0.05)
+            _log(f"7. button released, waiting for next click")
             # Poi aspetta il prossimo click sinistro
             while True:
                 if ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000:
-                    x, y = pyautogui.position()
-                    # Aggiorna UI dal thread principale
-                    if field == "username":
-                        self._coords_user = (x, y)
-                        self.user_btn.setText(f"✅ USERNAME salvato: ({x}, {y})")
-                        self.pass_btn.setEnabled(True)
-                    else:
-                        self._coords_pass = (x, y)
-                        self.pass_btn.setText(f"✅ PASSWORD salvata: ({x}, {y})")
-                        self._update_result()
+                    pt = ctypes.wintypes.POINT()
+                    ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+                    _log(f"8. click captured at {pt.x},{pt.y}")
+                    self._coord_captured.emit(field, pt.x, pt.y)
+                    _log(f"9. signal emitted")
                     break
                 time.sleep(0.01)
 
-        threading.Thread(target=wait_for_click, daemon=True).start()
+        threading.Thread(target=wait_click, daemon=True).start()
 
     def _update_result(self):
         if self._coords_user and self._coords_pass:
@@ -594,11 +593,23 @@ class WizardPageCalibration(QWizardPage):
         self.err_label.setText("")
 
     def validatePage(self):
+        _log("12. validatePage called")
         if not self._coords_user or not self._coords_pass:
             self.err_label.setText("Devi calibrare entrambi i campi prima di continuare.")
             return False
-        # Chiude il Riot Client in background così non blocca il wizard
-        threading.Thread(target=close_riot_processes, daemon=True).start()
+        _log("13. coords ok, closing riot via taskkill")
+        def kill_riot():
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", "RiotClientServices.exe"], 
+                             capture_output=True)
+                subprocess.run(["taskkill", "/F", "/IM", "LeagueClient.exe"], 
+                             capture_output=True)
+                subprocess.run(["taskkill", "/F", "/IM", "League of Legends.exe"], 
+                             capture_output=True)
+            except Exception:
+                pass
+        threading.Thread(target=kill_riot, daemon=True).start()
+        _log("14. thread started, returning True")
         self.err_label.setText("")
         return True
 
@@ -910,7 +921,7 @@ class AccountManager(QWidget):
         self.accounts = decrypt_data()
 
         self.setWindowTitle(APP_NAME)
-        self.setWindowIcon(QIcon("info/ico/256x256.ico"))
+        self.setWindowIcon(QIcon(APP_ICON))
         self.setGeometry(100, 100, 420, 480)
         self.setMinimumWidth(380)
 
@@ -1001,7 +1012,7 @@ class AccountManager(QWidget):
     # ── Tray ─────────────────────────────────────────────────────────────────
 
     def _setup_tray(self):
-        self.tray = QSystemTrayIcon(QIcon("info/ico/256x256.ico"), self)
+        self.tray = QSystemTrayIcon(QIcon(APP_ICON), self)
         menu = QMenu()
         menu.addAction("Apri", self._restore)
         menu.addAction("Kill Riot", close_riot_processes)
@@ -1098,10 +1109,26 @@ class AccountManager(QWidget):
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
+def _global_exception_handler(exc_type, exc_value, exc_tb):
+    import traceback
+    log_path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "crash_log.txt")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
+
+def _log(msg):
+    """Scrive un messaggio di debug su file accanto all'exe."""
+    try:
+        log_path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "debug_log.txt")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
 if __name__ == "__main__":
+    sys.excepthook = _global_exception_handler
     generate_key()
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)  # rimane in tray
+    app.setQuitOnLastWindowClosed(False)
     app.setWindowIcon(QIcon("info/ico/256x256.ico"))
 
     cfg = load_config()
