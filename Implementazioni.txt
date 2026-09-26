@@ -1,8 +1,0 @@
-- Rendere la password non in chiaro quando si inserisce un nuovo account
-
-
-- Aggiungere menù a tendina per scegliere di avviare League of legends/Valorant
-
-- Aggiungere le sezioni -  dei semplici separatori con nome separatore personalizzabile, in caso si volesse dividere per elo, main account, smurfs ecc... che si chiudono e si aprono mostrando gli accounts all'interno
-
-
