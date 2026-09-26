@@ -180,41 +180,19 @@ def select_account(username, accounts, game, config):
         "--launch-patchline=live"
     ])
 
-    # Minimizza le finestre sul monitor primario silenziosamente
+    # Minimizza le finestre sul monitor primario
     time.sleep(0.3)
     primary_mon = get_monitor_rect_at(0, 0)
-    WM_SYSCOMMAND      = 0x0112
-    SC_MINIMIZE        = 0xF020
-    WS_VISIBLE         = 0x10000000
-    WS_MINIMIZE        = 0x20000000
-    WS_OVERLAPPEDWINDOW = 0x00CF0000
-
-    def _enum_callback(hwnd, _):
+    for win in gw.getAllWindows():
+        if not win.visible or win.isMinimized or not win.title.strip():
+            continue
         try:
-            if not ctypes.windll.user32.IsWindowVisible(hwnd):
-                return True
-            style = ctypes.windll.user32.GetWindowLongW(hwnd, -16)
-            if not (style & WS_VISIBLE):
-                return True
-            if style & WS_MINIMIZE:
-                return True
-            # Solo finestre con stile overlapped (finestre normali dell'utente)
-            if not (style & WS_OVERLAPPEDWINDOW):
-                return True
-            if ctypes.windll.user32.GetWindowTextLengthW(hwnd) == 0:
-                return True
-            rect = ctypes.wintypes.RECT()
-            ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
-            cx = (rect.left + rect.right) // 2
-            cy = (rect.top + rect.bottom) // 2
-            if primary_mon[0] <= cx < primary_mon[2] and primary_mon[1] <= cy < primary_mon[3]:
-                ctypes.windll.user32.SendMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0)
+            wcx = win.left + win.width  // 2
+            wcy = win.top  + win.height // 2
+            if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
+                win.minimize()
         except Exception:
             pass
-        return True
-
-    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
-    ctypes.windll.user32.EnumWindows(EnumWindowsProc(_enum_callback), 0)
 
     # Attende la finestra del Riot Client visibile e non minimizzata
     timeout = 60
