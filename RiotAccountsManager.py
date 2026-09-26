@@ -26,7 +26,7 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.3"
+APP_VERSION     = "0.0.4"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -264,7 +264,8 @@ class DownloadThread(QThread):
         try:
             r = requests.get(self.url, stream=True, timeout=60)
             total = int(r.headers.get("content-length", 0))
-            dest  = os.path.join(os.path.dirname(sys.executable), "_update_new.exe")
+            dest  = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "C:\\Temp")), 
+                                 "RiotAccountsManager_update_setup.exe")
             downloaded = 0
             with open(dest, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -303,8 +304,11 @@ def show_update_dialog(parent, version, url):
         if not path:
             QMessageBox.critical(parent, "Errore", "Download fallito.")
             return
-        # Avvia il nuovo exe e chiude quello corrente
-        subprocess.Popen([path])
+        # Avvia l'installer in modalità silenziosa — installa e riavvia automaticamente
+        subprocess.Popen(
+            [path, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
         QApplication.quit()
 
     thread.finished.connect(on_finished)
