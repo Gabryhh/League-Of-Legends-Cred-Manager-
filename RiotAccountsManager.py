@@ -30,9 +30,12 @@ APP_VERSION     = "0.0.2"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
-KEY_FILE        = "key.key"
-DATA_FILE       = "accounts.enc"
-CONFIG_FILE     = "config.json"
+KEY_FILE        = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "key.key")
+DATA_FILE       = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "accounts.enc")
+CONFIG_FILE     = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "config.json")
+
+# Crea la cartella AppData se non esiste
+os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
 
 DEFAULT_RIOT_PATH = "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
 
@@ -1116,9 +1119,9 @@ def _global_exception_handler(exc_type, exc_value, exc_tb):
         f.write("".join(traceback.format_exception(exc_type, exc_value, exc_tb)))
 
 def _log(msg):
-    """Scrive un messaggio di debug su file accanto all'exe."""
+    """Scrive un messaggio di debug su file in AppData."""
     try:
-        log_path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)), "debug_log.txt")
+        log_path = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "debug_log.txt")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(msg + "\n")
     except Exception:

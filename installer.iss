@@ -17,12 +17,12 @@
 [Setup]
 AppId={{A3F7B2C1-D4E5-4F6A-B7C8-D9E0F1A2B3C4}
 AppName={#AppName}
-AppVersion={#AppVersion}
+AppVersion=v0.0.2
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName=C:\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 DisableDirPage=no
@@ -90,9 +90,4 @@ end;
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallDelete]
-; Rimuove i file creati dall'app (config, dati cifrati, chiave)
-; ATTENZIONE: questo elimina anche gli account salvati. Commentare le righe
-; sottostanti se si vuole mantenere i dati dopo la disinstallazione.
-Type: files; Name: "{app}\config.json"
-Type: files; Name: "{app}\accounts.enc"
-Type: files; Name: "{app}\key.key"
+Type: filesandordirs; Name: "{userappdata}\RiotAccountsManager"
