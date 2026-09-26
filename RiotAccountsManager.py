@@ -13,10 +13,10 @@ import pyperclip
 import psutil
 import pygetwindow as gw
 import requests
-from pynput import mouse as pynput_mouse
 from cryptography.fernet import Fernet
 from PySide6.QtGui import QIcon, QAction
-from PySide6.QtCore import Qt, QThread, Signal, QObject
+import keyboard
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
 from PySide6.QtWidgets import (
     QApplication, QWidget, QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
     QPushButton, QInputDialog, QMessageBox, QComboBox, QLineEdit, QCheckBox,
@@ -28,7 +28,7 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.1"
+APP_VERSION     = "0.0.2"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -404,7 +404,7 @@ class WizardPageCalibration(QWizardPage):
         self.setTitle("Calibrazione campi di login")
         self.setSubTitle(
             "Apriremo il Riot Client. Quando appare la schermata di login, "
-            "clicca sui campi indicati per salvare le coordinate.\n"
+            "posiziona il mouse sui campi e premi F8 per salvare la posizione.\n"
             "⚠️ Non spostare il Riot Client dopo l'apertura."
         )
         self._coords_user = None
@@ -420,17 +420,25 @@ class WizardPageCalibration(QWizardPage):
         self.launch_btn.clicked.connect(self._launch_riot)
         layout.addWidget(self.launch_btn)
 
-        self.user_btn = QPushButton("2. Clicca sul campo USERNAME  →  in attesa...")
+        # --- Sezione calibrazione USERNAME ---
+        self.user_btn = QPushButton("2. Clicca qui, poi clicca sul campo USERNAME nel Riot Client")
         self.user_btn.setMinimumHeight(38)
         self.user_btn.setEnabled(False)
         self.user_btn.clicked.connect(lambda: self._start_capture("username"))
         layout.addWidget(self.user_btn)
 
-        self.pass_btn = QPushButton("3. Clicca sul campo PASSWORD  →  in attesa...")
+        self.user_pos_label = QLabel("")
+        layout.addWidget(self.user_pos_label)
+
+        # --- Sezione calibrazione PASSWORD ---
+        self.pass_btn = QPushButton("3. Clicca qui, poi clicca sul campo PASSWORD nel Riot Client")
         self.pass_btn.setMinimumHeight(38)
         self.pass_btn.setEnabled(False)
         self.pass_btn.clicked.connect(lambda: self._start_capture("password"))
         layout.addWidget(self.pass_btn)
+
+        self.pass_pos_label = QLabel("")
+        layout.addWidget(self.pass_pos_label)
 
         layout.addSpacing(8)
 
@@ -452,82 +460,116 @@ class WizardPageCalibration(QWizardPage):
         self.err_label.setStyleSheet("color: red;")
         layout.addWidget(self.err_label)
 
+        # Timer che aggiorna le coordinate del mouse in tempo reale
+        self._capturing = None  # "username" o "password"
+
     def _launch_riot(self):
         riot_path = self.wizard().field("riot_path")
         if not riot_path or not os.path.exists(riot_path):
             self.err_label.setText("Percorso Riot Client non valido.")
             return
-        close_riot_processes()
-        subprocess.Popen([riot_path, "--launch-product=league_of_legends", "--launch-patchline=live"])
+        try:
+            close_riot_processes()
+            subprocess.Popen([riot_path, "--launch-product=league_of_legends", "--launch-patchline=live"])
 
-        # Sposta il wizard in alto a destra PRIMA di minimizzare tutto
-        screen = QApplication.primaryScreen().geometry()
-        wiz = self.wizard()
-        wiz.move(screen.right() - wiz.width() - 10, screen.top() + 10)
-        wiz.activateWindow()
-        wiz.raise_()
-
-        # Recupera il titolo del wizard per escluderlo dalla minimizzazione
-        wiz_title = wiz.windowTitle()
-
-        # Minimizza tutto sul monitor primario tranne il wizard
-        primary_mon = get_monitor_rect_at(0, 0)
-        for win in gw.getAllWindows():
-            if not win.visible or win.isMinimized or not win.title.strip():
-                continue
-            if win.title == wiz_title:
-                continue
-            try:
-                wcx = win.left + win.width  // 2
-                wcy = win.top  + win.height // 2
-                if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
-                    win.minimize()
-            except Exception:
-                pass
-
-        self.launch_btn.setEnabled(False)
-        self.launch_btn.setText("✅ Riot Client avviato")
-        self.user_btn.setEnabled(True)
-        self.err_label.setText("")
-
-        # Aspetta che il Riot Client sia visibile poi riporta il wizard in primo piano
-        def _wait_and_refocus():
-            timeout, poll, elapsed = 60, 0.5, 0
-            while elapsed < timeout:
-                wins = gw.getWindowsWithTitle("Riot Client")
-                if wins and wins[0].visible and not wins[0].isMinimized:
-                    break
-                time.sleep(poll)
-                elapsed += poll
+            # Sposta il wizard in alto a destra PRIMA di minimizzare tutto
+            screen = QApplication.primaryScreen().geometry()
+            wiz = self.wizard()
+            wiz.move(screen.right() - wiz.width() - 10, screen.top() + 10)
             wiz.activateWindow()
             wiz.raise_()
 
-        threading.Thread(target=_wait_and_refocus, daemon=True).start()
+            # Recupera il titolo del wizard per escluderlo dalla minimizzazione
+            wiz_title = wiz.windowTitle()
+
+            # Minimizza tutto sul monitor primario tranne il wizard
+            primary_mon = get_monitor_rect_at(0, 0)
+            for win in gw.getAllWindows():
+                if not win.visible or win.isMinimized or not win.title.strip():
+                    continue
+                if win.title == wiz_title:
+                    continue
+                try:
+                    wcx = win.left + win.width  // 2
+                    wcy = win.top  + win.height // 2
+                    if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
+                        win.minimize()
+                except Exception:
+                    pass
+
+            self.launch_btn.setEnabled(False)
+            self.launch_btn.setText("✅ Riot Client avviato")
+            self.user_btn.setEnabled(True)
+            self._capturing = "username"
+            self.err_label.setText("")
+
+            # Aspetta che il Riot Client sia visibile poi riporta il wizard in primo piano
+            def _wait_and_refocus():
+                timeout, poll, elapsed = 60, 0.5, 0
+                while elapsed < timeout:
+                    wins = gw.getWindowsWithTitle("Riot Client")
+                    if wins and wins[0].visible and not wins[0].isMinimized:
+                        break
+                    time.sleep(poll)
+                    elapsed += poll
+                wiz.activateWindow()
+                wiz.raise_()
+
+            threading.Thread(target=_wait_and_refocus, daemon=True).start()
+
+        except Exception as e:
+            import traceback
+            log_path = os.path.join(os.path.dirname(sys.executable), "crash_log.txt")
+            with open(log_path, "w") as f:
+                f.write(traceback.format_exc())
+            self.err_label.setText(f"Errore: {e}\nLog salvato in: {log_path}")
+
+    def _update_mouse_pos(self):
+        pass  # non più usato
+
+    def _save_position(self, field):
+        x, y = pyautogui.position()
+        if field == "username":
+            self._coords_user = (x, y)
+            self.user_btn.setText(f"✅ USERNAME salvato: ({x}, {y})")
+            self.user_btn.setEnabled(False)
+            self.pass_btn.setEnabled(True)
+        else:
+            self._coords_pass = (x, y)
+            self.pass_btn.setText(f"✅ PASSWORD salvata: ({x}, {y})")
+            self.pass_btn.setEnabled(False)
+            self._update_result()
 
     def _start_capture(self, field):
-        """Avvia ascolto del prossimo click globale del mouse."""
+        """Aspetta il prossimo click sinistro del mouse tramite polling ctypes."""
         if field == "username":
-            self.user_btn.setText("⏳ In ascolto... clicca sul campo USERNAME nel Riot Client")
+            self.user_btn.setText("⏳ In attesa del click su USERNAME...")
             self.user_btn.setEnabled(False)
         else:
-            self.pass_btn.setText("⏳ In ascolto... clicca sul campo PASSWORD nel Riot Client")
+            self.pass_btn.setText("⏳ In attesa del click su PASSWORD...")
             self.pass_btn.setEnabled(False)
 
-        def on_click(x, y, button, pressed):
-            if pressed and button == pynput_mouse.Button.left:
-                if field == "username":
-                    self._coords_user = (x, y)
-                    self.user_btn.setText(f"✅ USERNAME: ({x}, {y})")
-                    self.pass_btn.setEnabled(True)
-                else:
-                    self._coords_pass = (x, y)
-                    self.pass_btn.setText(f"✅ PASSWORD: ({x}, {y})")
-                    self._update_result()
-                self._listener.stop()
-                return False
+        def wait_for_click():
+            # Aspetta che il tasto sinistro venga rilasciato (per non catturare il click sul bottone)
+            while ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000:
+                time.sleep(0.05)
+            # Poi aspetta il prossimo click sinistro
+            while True:
+                if ctypes.windll.user32.GetAsyncKeyState(0x01) & 0x8000:
+                    x, y = pyautogui.position()
+                    # Aggiorna UI dal thread principale
+                    if field == "username":
+                        self._coords_user = (x, y)
+                        self.user_btn.setText(f"✅ USERNAME salvato: ({x}, {y})")
+                        self.pass_btn.setEnabled(True)
+                    else:
+                        self._coords_pass = (x, y)
+                        self.pass_btn.setText(f"✅ PASSWORD salvata: ({x}, {y})")
+                        self._update_result()
+                    break
+                time.sleep(0.01)
 
-        self._listener = pynput_mouse.Listener(on_click=on_click)
-        self._listener.start()
+        threading.Thread(target=wait_for_click, daemon=True).start()
 
     def _update_result(self):
         if self._coords_user and self._coords_pass:
@@ -540,12 +582,13 @@ class WizardPageCalibration(QWizardPage):
     def _reset_calibration(self):
         self._coords_user = None
         self._coords_pass = None
+        self._capturing = None
         self.launch_btn.setEnabled(True)
         self.launch_btn.setText("1. Avvia Riot Client per la calibrazione")
         self.user_btn.setEnabled(False)
-        self.user_btn.setText("2. Clicca sul campo USERNAME  →  in attesa...")
+        self.user_btn.setText("2. Clicca qui, poi clicca sul campo USERNAME nel Riot Client")
         self.pass_btn.setEnabled(False)
-        self.pass_btn.setText("3. Clicca sul campo PASSWORD  →  in attesa...")
+        self.pass_btn.setText("3. Clicca qui, poi clicca sul campo PASSWORD nel Riot Client")
         self.result_label.setText("")
         self.redo_btn.setVisible(False)
         self.err_label.setText("")

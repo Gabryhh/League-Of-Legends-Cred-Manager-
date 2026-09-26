@@ -7,11 +7,12 @@
 ; I file saranno in dist\RiotAccountsManager By Gabry\
 
 #define AppName "RiotAccountsManager By Gabry"
-#define AppVersion "0.0.1"
+#define AppVersion "0.0.2"
 #define AppPublisher "Gabry"
 #define AppURL "https://github.com/Gabryhh/League-Of-Legends-Cred-Manager-"
 #define AppExeName "RiotAccountsManager By Gabry.exe"
 #define SourceDir "dist\RiotAccountsManager By Gabry"
+#define VCRedistUrl "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
 [Setup]
 AppId={{A3F7B2C1-D4E5-4F6A-B7C8-D9E0F1A2B3C4}
@@ -34,8 +35,7 @@ SolidCompression=yes
 WizardStyle=modern
 WizardResizable=no
 UninstallDisplayIcon={app}\{#AppExeName}
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
@@ -48,6 +48,8 @@ Name: "desktopicon"; Description: "Crea un collegamento sul Desktop"; GroupDescr
 [Files]
 ; Tutti i file buildati da PyInstaller
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Visual C++ Redistributable (installato silenziosamente se non presente)
+Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 ; Collegamento nel menu Start
@@ -57,9 +59,35 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename:
 ; Voce disinstalla nel menu Start
 Name: "{group}\Disinstalla {#AppName}"; Filename: "{uninstallexe}"
 
+[Code]
+// Controlla se Visual C++ Redistributable 2015-2022 x64 è già installato
+function VCRedistInstalled: Boolean;
+var
+  Installed: Cardinal;
+begin
+  Result := RegQueryDWordValue(
+    HKLM,
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64',
+    'Installed',
+    Installed
+  ) and (Installed = 1);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if (CurStep = ssInstall) and not VCRedistInstalled then
+  begin
+    Exec(ExpandConstant('{tmp}\vc_redist.x64.exe'),
+      '/install /quiet /norestart', '', SW_HIDE,
+      ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
 [Run]
 ; Avvia l'app dopo l'installazione
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
 
 [UninstallDelete]
 ; Rimuove i file creati dall'app (config, dati cifrati, chiave)
