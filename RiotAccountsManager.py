@@ -26,7 +26,7 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.4"
+APP_VERSION     = "0.0.5"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -181,20 +181,6 @@ def select_account(username, accounts, game, config):
         f"--launch-product={game_mapping.get(game, 'league_of_legends')}",
         "--launch-patchline=live"
     ])
-
-    # Minimizza le finestre sul monitor primario
-    time.sleep(0.3)
-    primary_mon = get_monitor_rect_at(0, 0)
-    for win in gw.getAllWindows():
-        if not win.visible or win.isMinimized or not win.title.strip():
-            continue
-        try:
-            wcx = win.left + win.width  // 2
-            wcy = win.top  + win.height // 2
-            if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
-                win.minimize()
-        except Exception:
-            pass
 
     # Attende la finestra del Riot Client visibile e non minimizzata
     timeout = 60
@@ -953,7 +939,7 @@ class AccountManager(QWidget):
         self.config   = load_config()
         self.accounts = decrypt_data()
 
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} — v{APP_VERSION}")
         self.setWindowIcon(QIcon(APP_ICON))
         self.setGeometry(100, 100, 420, 480)
         self.setMinimumWidth(380)
@@ -1099,6 +1085,18 @@ class AccountManager(QWidget):
     # ── Avvio gioco ───────────────────────────────────────────────────────────
 
     def start_game(self, username):
+        # Minimizza tutto sul monitor primario e l'app stessa insieme
+        primary_mon = get_monitor_rect_at(0, 0)
+        for win in gw.getAllWindows():
+            if not win.visible or win.isMinimized or not win.title.strip():
+                continue
+            try:
+                wcx = win.left + win.width  // 2
+                wcy = win.top  + win.height // 2
+                if primary_mon[0] <= wcx < primary_mon[2] and primary_mon[1] <= wcy < primary_mon[3]:
+                    win.minimize()
+            except Exception:
+                pass
         self.hide()  # va nella tray
         self.config = load_config()
         select_account(username, self.accounts, self.game_selector.currentText(), self.config)
@@ -1173,6 +1171,14 @@ def _log(msg):
 if __name__ == "__main__":
     sys.excepthook = _global_exception_handler
     _fix_ssl()
+
+    # Controlla se un'altra istanza è già in esecuzione
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "RiotAccountsManagerByGabry_SingleInstance")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        app_check = QApplication(sys.argv)
+        QMessageBox.warning(None, APP_NAME, "Il programma è già in esecuzione.\nCercalo nell'area di notifica (tray).")
+        sys.exit(0)
+
     generate_key()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
