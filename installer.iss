@@ -7,7 +7,7 @@
 ; I file saranno in dist\RiotAccountsManager By Gabry\
 
 #define AppName "RiotAccountsManager By Gabry"
-#define AppVersion "1.0.0"
+#define AppVersion "0.0.1"
 #define AppPublisher "Gabry"
 #define AppURL "https://github.com/Gabryhh/League-Of-Legends-Cred-Manager-"
 #define AppExeName "RiotAccountsManager By Gabry.exe"

@@ -28,7 +28,7 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "1.0.0"
+APP_VERSION     = "0.0.1"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
