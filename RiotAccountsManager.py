@@ -1,3 +1,10 @@
+import sys, os
+# Fix SSL certificati per exe PyInstaller
+if hasattr(sys, "_MEIPASS"):
+    _cert = os.path.join(sys._MEIPASS, "certifi", "cacert.pem")
+    if os.path.exists(_cert):
+        os.environ["SSL_CERT_FILE"] = _cert
+        os.environ["REQUESTS_CA_BUNDLE"] = _cert
 import json
 import os
 import sys
@@ -26,11 +33,38 @@ from functools import partial
 # ─── Costanti ────────────────────────────────────────────────────────────────
 
 APP_NAME        = "RiotAccountsManager By Gabry"
-APP_VERSION     = "0.0.5"
+APP_VERSION     = "1.1.0"
 GITHUB_REPO     = "Gabryhh/League-Of-Legends-Cred-Manager-"
 GITHUB_API_URL  = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 KEY_FILE        = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "key.key")
+UPDATE_FLAG_FILE = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "just_updated.txt")
+
+CHANGELOG = {
+    "0.0.5": [
+        "Fix download aggiornamenti automatici",
+        "Fix certificati SSL negli eseguibili",
+    ],
+    "0.0.6": [
+        "Fix sistema aggiornamenti automatici completo",
+        "Riavvio automatico dopo aggiornamento",
+        "Popup di conferma aggiornamento installato",
+    ],
+    "0.0.9": [
+        "Fix definitivo popup post-aggiornamento",
+        "File flag rigenerato ad ogni aggiornamento",
+    ],
+    "1.0.0": [
+        "🎉 Prima versione stabile di RiotAccountsManager!",
+        "Sistema di aggiornamento automatico completo e testato",
+        "Interfaccia ottimizzata e stabile",
+    ],
+    "1.1.0": [
+        "📊 Counter degli account visibile in tempo reale",
+        "🌙 Modalità tema configurabile (Auto/Chiaro/Scuro)",
+        "🎯 Focus forzato aggressivo del Riot Client durante login",
+    ],
+}
 DATA_FILE       = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "accounts.enc")
 CONFIG_FILE     = os.path.join(os.environ.get("APPDATA", "."), "RiotAccountsManager", "config.json")
 
@@ -161,6 +195,60 @@ def close_riot_processes():
             pass
     time.sleep(3)
 
+def force_window_to_foreground(window_handle):
+    """
+    Forza AGGRESSIVAMENTE una finestra in primo piano usando Windows API native.
+    Molto più potente di window.activate() - funziona anche contro Chrome e altri.
+    """
+    try:
+        user32 = ctypes.windll.user32
+        
+        # 1. Ottieni gli HWND dei thread
+        foreground_thread = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
+        target_thread = user32.GetWindowThreadProcessId(window_handle, None)
+        
+        # 2. Collega i thread per bypassare le restrizioni di Windows
+        if foreground_thread != target_thread:
+            user32.AttachThreadInput(foreground_thread, target_thread, True)
+        
+        # 3. Mostra la finestra se minimizzata
+        SW_RESTORE = 9
+        user32.ShowWindow(window_handle, SW_RESTORE)
+        
+        # 4. Porta la finestra in primo piano
+        user32.BringWindowToTop(window_handle)
+        user32.SetForegroundWindow(window_handle)
+        user32.SetFocus(window_handle)
+        
+        # 5. Scollega i thread
+        if foreground_thread != target_thread:
+            user32.AttachThreadInput(foreground_thread, target_thread, False)
+            
+        return True
+    except Exception:
+        return False
+
+def minimize_browsers():
+    """
+    Minimizza solo i browser comuni (Chrome, Firefox, Edge) che potrebbero rubare il focus.
+    Strategia più conservativa e affidabile.
+    """
+    try:
+        import pygetwindow as gw
+        browser_titles = ["Chrome", "Firefox", "Edge", "Opera", "Brave"]
+        
+        for title_fragment in browser_titles:
+            try:
+                windows = gw.getWindowsWithTitle(title_fragment)
+                for win in windows:
+                    if win.visible and not win.isMinimized:
+                        win.minimize()
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
 # ─── Logica avvio account ─────────────────────────────────────────────────────
 
 def select_account(username, accounts, game, config):
@@ -198,17 +286,31 @@ def select_account(username, accounts, game, config):
     if riot_window is None:
         return
 
-    riot_window.activate()
+    force_window_to_foreground(riot_window._hWnd)
     time.sleep(config.get("login_delay", 3.0))
 
     cx, cy = config["coords_username"]
     px, py = config["coords_password"]
 
+    # Focus forzato prima del click USERNAME
+    minimize_browsers()
+    time.sleep(0.2)
+    force_window_to_foreground(riot_window._hWnd)
+    time.sleep(0.3)
+    force_window_to_foreground(riot_window._hWnd)  # Doppio force per sicurezza
+    time.sleep(0.3)
     pyautogui.click(cx, cy)
     time.sleep(0.5)
     pyperclip.copy(user["login"])
     pyautogui.hotkey("ctrl", "v")
 
+    # Focus forzato prima del click PASSWORD
+    minimize_browsers()
+    time.sleep(0.2)
+    force_window_to_foreground(riot_window._hWnd)
+    time.sleep(0.3)
+    force_window_to_foreground(riot_window._hWnd)  # Doppio force per sicurezza
+    time.sleep(0.3)
     pyautogui.click(px, py)
     time.sleep(0.5)
     pyperclip.copy(user["password"])
@@ -285,13 +387,7 @@ def show_update_dialog(parent, version, url):
     bar.setRange(0, 100)
     layout.addWidget(QLabel("Download aggiornamento..."))
     layout.addWidget(bar)
-    dlg.show()
-
-    # Teniamo il thread come attributo del dialog per evitare garbage collection
-    dlg._thread = DownloadThread(url)
-    dlg._thread.progress.connect(bar.setValue)
-
-    def on_finished(path):
+    def on_finished(path, _version=version):
         dlg.close()
         if not path or path.startswith("ERROR:"):
             err = path.replace("ERROR:", "") if path else "nessun path"
@@ -306,7 +402,20 @@ def show_update_dialog(parent, version, url):
             "/SILENT /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
             None, 1
         )
+        # SEMPRE scrive il file flag per il popup post-aggiornamento
+        try:
+            with open(UPDATE_FLAG_FILE, "w", encoding="utf-8") as f:
+                f.write(_version)
+        except Exception:
+            pass
         QApplication.quit()
+
+    # Teniamo il thread come attributo del dialog per evitare garbage collection
+    dlg._thread = DownloadThread(url)
+    dlg._thread.progress.connect(bar.setValue)
+    dlg._thread.finished.connect(on_finished)
+    dlg._thread.start()
+    dlg.exec()
 
 # ─── Setup Wizard ─────────────────────────────────────────────────────────────
 
@@ -945,10 +1054,34 @@ class AccountManager(QWidget):
 
         root = QVBoxLayout(self)
 
+        # Counter accounts in alto a destra
+        top_layout = QHBoxLayout()
+        top_layout.addStretch()
+        self.counter_label = QLabel("📊 Accounts: 0")
+        self.counter_label.setStyleSheet("font-size: 11px; color: gray; padding: 5px;")
+        top_layout.addWidget(self.counter_label)
+        root.addLayout(top_layout)
+
+
         # Area scrollabile per gli account
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
+        # Stile scrollbar - larghezza fissa senza hover
+        scroll.setStyleSheet("""
+            QScrollBar:vertical {
+                width: 12px;
+                background: transparent;
+            }
+            QScrollBar::handle:vertical {
+                background: #888;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #555;
+            }
+        """)
         self.account_container = QWidget()
         self.account_layout    = QVBoxLayout(self.account_container)
         self.account_layout.setAlignment(Qt.AlignTop)
@@ -999,7 +1132,17 @@ class AccountManager(QWidget):
         self.kill_btn = QPushButton("☠  Kill Riot")
         self.kill_btn.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold;")
         self.kill_btn.clicked.connect(close_riot_processes)
-        bottom.addWidget(self.kill_btn)
+
+        # Toggle tema
+        self.theme_btn = QPushButton(self._get_theme_icon())
+        self.theme_btn.setToolTip("Cambia tema (Auto/Chiaro/Scuro)")
+        self.theme_btn.clicked.connect(self._toggle_theme)
+
+        # Kill Riot e Toggle Tema sulla stessa riga
+        action_layout = QHBoxLayout()
+        action_layout.addWidget(self.kill_btn)
+        action_layout.addWidget(self.theme_btn)
+        bottom.addLayout(action_layout)
 
         root.addLayout(bottom)
 
@@ -1007,7 +1150,63 @@ class AccountManager(QWidget):
         self._setup_tray()
         self._check_updates()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not getattr(self, "_shown_once", False):
+            self._shown_once = True
+            if os.path.exists(UPDATE_FLAG_FILE):
+                try:
+                    with open(UPDATE_FLAG_FILE, "r", encoding="utf-8") as f:
+                        updated_to = f.read().strip()
+                    os.remove(UPDATE_FLAG_FILE)
+                except Exception:
+                    updated_to = APP_VERSION
+                notes = CHANGELOG.get(APP_VERSION, ["Miglioramenti generali e correzioni di bug."])
+                QTimer.singleShot(200, lambda: QMessageBox.information(
+                    self,
+                    f"Aggiornato a v{APP_VERSION}!",
+                    f"<b>Aggiornamento a v{APP_VERSION} completato!</b><br><br>"
+                    "Novità:<br>" +
+                    "<br>".join(f"&nbsp;&nbsp;• {n}" for n in notes)
+                ))
+
+
+    # ── Tema ──────────────────────────────────────────────────────────────────
+
+    def _get_theme_icon(self):
+        theme = self.config.get('theme', 'auto')
+        if theme == 'dark':
+            return '☀️'
+        elif theme == 'light':
+            return '🌙'
+        else:
+            return '🌓'
+
+    def _toggle_theme(self):
+        current = self.config.get('theme', 'auto')
+        themes = ['auto', 'light', 'dark']
+        next_theme = themes[(themes.index(current) + 1) % len(themes)]
+        self.config['theme'] = next_theme
+        save_config(self.config)
+        self.theme_btn.setText(self._get_theme_icon())
+        self._apply_theme()
+
+    def _apply_theme(self):
+        theme = self.config.get('theme', 'auto')
+        if theme == 'auto':
+            # Usa il tema di sistema (default Qt)
+            QApplication.instance().setStyleSheet("")
+        elif theme == 'light':
+            QApplication.instance().setStyleSheet("QWidget { background-color: white; color: black; }")
+        elif theme == 'dark':
+            QApplication.instance().setStyleSheet("QWidget { background-color: #2b2b2b; color: white; }")
+
+    def _update_counter(self):
+        count = len(self.accounts)
+        self.counter_label.setText(f"📊 Accounts: {count}")
+
     # ── UI account list ───────────────────────────────────────────────────────
+
 
     def _build_account_list(self):
         # Pulisce
@@ -1034,6 +1233,8 @@ class AccountManager(QWidget):
             wrapper = QWidget()
             wrapper.setLayout(row)
             self.account_layout.addWidget(wrapper)
+
+        self._update_counter()
 
     def _clear_layout(self, layout):
         while layout.count():
@@ -1073,6 +1274,27 @@ class AccountManager(QWidget):
         self.tray.showMessage(APP_NAME, "L'app è ancora attiva nella tray.", QSystemTrayIcon.Information, 2000)
 
     # ── Aggiornamenti ─────────────────────────────────────────────────────────
+
+    def _check_just_updated(self):
+        """Mostra popup di benvenuto dopo un aggiornamento."""
+        just_updated = "--just-updated" in sys.argv
+        if not just_updated and os.path.exists(UPDATE_FLAG_FILE):
+            just_updated = True
+        if not just_updated:
+            return
+        try:
+            if os.path.exists(UPDATE_FLAG_FILE):
+                os.remove(UPDATE_FLAG_FILE)
+        except Exception:
+            pass
+        notes = CHANGELOG.get(APP_VERSION, ["Miglioramenti generali e correzioni di bug."])
+        QMessageBox.information(
+            self,
+            f"Aggiornato a v{APP_VERSION}!",
+            f"<b>Aggiornamento a v{APP_VERSION} completato con successo!</b><br><br>"
+            "Novità in questa versione:<br>" +
+            "<br>".join(f"&nbsp;&nbsp;• {n}" for n in notes)
+        )
 
     def _check_updates(self):
         self._update_checker = UpdateChecker()

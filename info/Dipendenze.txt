@@ -1,7 +1,0 @@
-pip install cryptography
-
-pip install pyautogui
-
-pip install psutil
-
-pip install pyside6

@@ -7,11 +7,11 @@
 ; I file saranno in dist\RiotAccountsManager By Gabry\
 
 #define AppName "RiotAccountsManager By Gabry"
-#define AppVersion "0.0.5"
+#define AppVersion "1.0.0"
 #define AppPublisher "Gabry"
 #define AppURL "https://github.com/Gabryhh/League-Of-Legends-Cred-Manager-"
 #define AppExeName "RiotAccountsManager By Gabry.exe"
-#define SourceDir "dist\RiotAccountsManager By Gabry"
+#define SourceDir "dist"
 #define VCRedistUrl "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
 [Setup]
@@ -49,15 +49,15 @@ Name: "desktopicon"; Description: "Crea un collegamento sul Desktop"; GroupDescr
 
 [Files]
 ; Tutti i file buildati da PyInstaller
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\RiotAccountsManager_v1.0.0.exe"; DestDir: "{app}"; DestName: "RiotAccountsManager By Gabry.exe"; Flags: ignoreversion
 ; Visual C++ Redistributable (installato silenziosamente se non presente)
 Source: "vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 ; Collegamento nel menu Start
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\_internal\info\ico\256x256.ico"
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 ; Collegamento sul desktop (opzionale, abilitato di default)
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\_internal\info\ico\256x256.ico"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 ; Voce disinstalla nel menu Start
 Name: "{group}\Disinstalla {#AppName}"; Filename: "{uninstallexe}"
 
@@ -88,8 +88,8 @@ begin
 end;
 
 [Run]
-; Avvia l'app dopo l'installazione
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent runascurrentuser
+; Avvia l'app dopo l'installazione (sempre, anche con /SILENT)
+Filename: "{app}\{#AppExeName}"; Parameters: "--just-updated"; Flags: nowait runascurrentuser
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{userappdata}\RiotAccountsManager"

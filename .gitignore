@@ -3,6 +3,9 @@ key.key
 accounts.enc
 config.json
 
+# Dipendenze esterne
+vc_redist.x64.exe
+
 # File Windows
 desktop.ini
 Thumbs.db
